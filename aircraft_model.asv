@@ -1,0 +1,200 @@
+function [XDOT] = aircraft_model(X,U)
+
+% State and Control vector
+
+x1 = X(1); % u
+x2 = X(2); % v
+x3 = X(3); % w
+
+x4 = X(4); % p
+x5 = X(5); % q
+x6 = X(6); % r
+
+x7 = X(7); % phi
+x8 = X(8); % theta
+x9 = X(9); % psi
+
+u1 = U(1); % d_xi (aileron)
+u2 = U(2); % d_eta (elevator)
+u3 = U(3); % d_zeta (rudder)
+u4 = U(4); % d_th1 (throttle 1)
+u5 = U(5); % d_th2 (throttle 2)
+
+%----------------------- CONSTANTS------------------------
+m = 120000; % Aircraft total mass (kg)
+
+% Inertia matrix
+
+I_B = m* [40.07 0 -2.0923;
+          0 64 0;
+          -2.0923 0 99.92];
+invI_B = (1/m) * [0.0249836 0 0.000523151;
+                  0 0.015625 0;
+                  0.000523151 0 0.010019];
+
+
+
+cbar = 6.6; % Mean Aerodynamic Chord (m)
+lt = 24.8; % Distance b/w tail and body (m)
+S = 260; % Wing planform area (m^2)
+St = 64; % Tail planform area (m^2)
+
+X_cg = 0.23*cbar; % X position of CG (m)
+Y_cg = 0; % Y position of CG (m)
+Z_cg = 0.1*cbar; % Z position of CG (m)
+
+X_ac = 0.12*cbar; % X position of aerodynamic center (m)
+Y_ac = 0; % Y position of aerodynamic center (m)
+Z_ac = 0; % Z position of aerodynamic center (m)
+
+% Engine constants
+Xapt1 = 0; % x position of engine 1 force (m)
+Yapt1 = -7.94; % y position of engine 1 force (m)
+Zapt1 = -1.9; % z position of engine 1 force (m)
+
+Xapt2 = 0; % x position of engine 2 force (m)
+Yapt2 = 7.94; % y position of engine 2 force (m)
+Zapt2 = -1.9; % z position of engine 2 force (m)
+
+% Environment constants
+rho = 1.225; % Air density (kg/m^3)
+g = 9.80665; % Gravitational acceleration (m/s^2)
+
+%---------------------VARIABLES---------------------------
+
+% Intermediate variables
+% Calculate airspeed
+Va = sqrt(x1^2 + x2^2 +x3^2); 
+
+% calculate alpha and beta
+alpha = atan2(x3, x1);
+beta = asin(x2/va);
+
+% calculate dynamic pressure
+q = 0.5 * ro * Va^2;
+
+% Vectors
+omega_be_b = [x4;x5;x6];
+V_B = [x1; x2; x3];
+
+% ------------------AERODYNAMICS-----------------------------
+% Aerodynamic model constants
+deps_dalpha = 0.25; % change in downwash w.r.t alpha (rad/rad)
+alpha_L0 = -11.5*pi/180; % Zero lift angle of attack (rad)
+n = 5.5; % Slope of linear region of lift polar
+alpha3 = -768.5; % coefficient of alpha^3
+alpha2 = 609.2;  % coefficient of alpha^2
+alpha1 = -155.2; % coefficient of alpha^1
+alpha0 = 15.212; % coefficient of alpha^0
+alpha_switch = 14.5*(pi/180); % alpha where lift slope goes from linear to non-linear
+
+% calculate CL_wb
+
+if alpha<= alpha_switch
+    CL_wb = n*(alpha - alpha_L0);
+else
+    CL_wb = alpha3*alpha^3 + alpha2*alpha^2 + alpha1*alpha + alpha0;
+end
+
+% Calculate CL_t
+epsilon = deps_dalpha * (alpha - alpha_L0);
+alpha_t = alpha - epsilon + u2 + (1.3*x5*lt/Va);
+CL_t = 3.1 * (St/S) * alpha_t;
+
+% Total lift
+CL = CL_wb + CL_t;
+
+% Total drag 
+CD = 0.13 + 0.07*(5.5*alpha + 0.654)^2;
+
+% Calculate side force
+CY = -1.6*beta + 0.24*u3;
+
+%----------------------DIMENSIONAL AERODYNAMIC FORCES---------------------
+% Aerodynamic force in the aerodynamic frame
+
+FA_A = [-CD*q*S;
+         CY*q*S;
+        -CL*q*S];
+
+% Rotation aerodynamic frame to body frame
+M_BA = [cos(alpha) 0 -sin(alpha);
+        0 1 0;
+        sin(alpha) 0 cos(alpha)];
+
+FA_B = M_BA*FA_A;
+
+%-------------------MOMENTS------------------------------
+eta11 = -1.4*beta;
+eta21 = -0.59 - (3.1 * (St*lt)/(S*cbar))*(alpha - epsilon);
+eta31 = (1 - alpha*(180/(15*pi)))* beta;
+
+eta = [eta11;
+        eta21;
+        eta31];
+
+dCMdx = (cbar/Va) * [-11 0 5;
+                     0 (-4.03*(St*lt^2)/(S*cbar^2)) 0;
+                     1.7 0 -11.5];
+
+dCMdu = [-0.6 0 0.22
+         0 (-3.1*(St*lt)/(S*cbar)) 0;
+         0 0 -0.63];
+
+% Calcuate CM = [Cl; Cm; Cn] about aerodynamic center in body frame
+CM_ac_B = eta + dCMdx *omega_be_b + dCMdu*[u1;u2;u3];
+
+% Aerodynamic moment
+MA_ac_B = CM_ac_B*q*S*cbar;
+
+% Transfer the moment to CG
+r_cg_B = [X_cg; Y_cg; Z_cg];
+r_ac_B = [X_ac; Y_ac; Z_ac];
+MA_cg_B = MA_ac_B + cross(FA_B, r_cg_B - r_ac_B);
+
+% -----------ENGINE FORCES AND MOMENTS----------------------------------
+
+F1 = u4*m*g;
+F2 = u5*m*g;
+
+FP1_B = [F1; 0; 0];
+FP2_B = [F2; 0; 0];
+
+% Total propulsive forces in the body frame
+FP_B = FP1_B + FP2_B;
+
+% Engine moment due to offset of the engine from CG
+mpw1 = [X_cg - Xapt1;
+        Yapt1 - Y_cg;
+        Z_cg - Zapt1];
+
+mpw2 = [X_cg - Xapt2;
+        Yapt2 - Y_cg;
+        Z_Cg - Zapt2];
+
+MP1_cg_B = cross(mpw1, FP1_B);
+MP2_cg_B = cross(mpw2, FP2_B);
+
+MP_cg_B = MP1_cg_B + MP2_cg_B;
+
+%-----------------------GRAVITY-----------------------------------------
+% Calculate gravitational forces in the body frame
+
+g_B = [-g*sin(x8);
+       g*cos(x8)*sin(x7);
+       g*cos(x8)*cos(x7)];
+FG_B = m*g_B;
+
+% -----------------------STATE DERIVATIVES-------------------------------
+% Calculate u_dot, v_dot, w_dot
+F_B = FG_B + FP_B +FA_B;
+translation_dot = (1/m)*F_B - cross(omega_be_b, V_B);
+
+% Calculate pdot, qdot, rdot (rotation_rate_dot)
+M_cg_B = MA_cg_B + MP_cg_B;
+rotation_rate_dot = invI_B*(M_cg_B - cross(omega_be_b, I_B*omega_be_b));
+
+% Calculate phidot, thetadot, psidot (attitude_dot)
+M_phi = [1 sin(x7)*tan(x8) cos(x7)*tan(x8)]
+
+
