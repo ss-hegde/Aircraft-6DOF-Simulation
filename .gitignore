@@ -1,0 +1,26 @@
+# MATLAB backup and autosave files
+*.asv
+*.autosave
+*.bak
+*.mdl.autosave
+*.slx.autosave
+
+# Simulink cache and generated files
+slprj/
+sfprj/
+*_grt_rtw/
+*.slxc
+*.tlc
+
+# Mex binaries
+*.mex*
+*.mexa64
+*.mexw64
+*.mexmaci64
+
+# Other system and user-specific files
+*.mat
+*.log
+*.out
+*.DS_Store
+Thumbs.db
