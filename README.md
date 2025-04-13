@@ -22,11 +22,11 @@ This repository contains a nonlinear 6-degree-of-freedom (6-DOF) aircraft simula
 
 ## How to run the Simulation
 
--1. Install FlightGear (if not already installed)
--2. Open MATLAB and navigate to the project folder
--3. Run the provided FlightGear launch script:**runfg.bat**
--4. Run the **init.m** MATLAB file to initialize the model.
--5. Open the Simulink model **plant.slx** and start the simulation.
+1. Install FlightGear (if not already installed)
+2. Open MATLAB and navigate to the project folder
+3. Run the provided FlightGear launch script:**runfg.bat**
+4. Run the **init.m** MATLAB file to initialize the model.
+5. Open the Simulink model **plant.slx** and start the simulation.
 
 ---
 
